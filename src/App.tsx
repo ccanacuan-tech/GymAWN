@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Gym,
+  GymAdmin,
   Client,
   Plan,
   ClassSession,
@@ -53,22 +54,38 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+  writeBatch,
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from './firebase';
+
 export default function App() {
   // SaaS relational data states
-  const [gyms, setGyms] = useState<Gym[]>(mockGyms);
-  const [clients, setClients] = useState<Client[]>(mockClients);
-  const [products, setProducts] = useState<ProductInventory[]>(mockProducts);
-  const [planes] = useState<Plan[]>(mockPlanes);
-  const [classes, setClasses] = useState<ClassSession[]>(mockClasses);
+  const [gyms, setGyms] = useState<Gym[]>([]);
+  const [gymAdmins, setGymAdmins] = useState<GymAdmin[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [products, setProducts] = useState<ProductInventory[]>([]);
+  const [planes, setPlanes] = useState<Plan[]>([]);
+  const [classes, setClasses] = useState<ClassSession[]>([]);
 
   // Monitoring States
-  const [backups, setBackups] = useState<BackupFile[]>(initialBackups);
-  const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
+  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [serverMetrics, setServerMetrics] = useState<ServerMetrics>(generateMetrics());
+  const [loading, setLoading] = useState(true);
 
   // Workspace configuration states
   const [activeGymId, setActiveGymId] = useState<number>(1);
+  const [activeClientId, setActiveClientId] = useState<number>(1);
   const [currentRole, setCurrentRole] = useState<'super_admin' | 'gym_admin' | 'client'>('gym_admin');
+  const [impersonatedBySuperAdmin, setImpersonatedBySuperAdmin] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -81,26 +98,232 @@ export default function App() {
     return () => clearInterval(handleInterval);
   }, []);
 
-  // System Logging helper controller
-  const handleLogAdd = (
+  // Sync databases and seed if empty, setup real-time subscribers
+  useEffect(() => {
+    let active = true;
+
+    async function syncAndSeed() {
+      try {
+        // Seed Gyms if empty
+        const gymsCol = collection(db, 'gyms');
+        const gymsSnap = await getDocs(gymsCol);
+        if (gymsSnap.empty) {
+          const batch = writeBatch(db);
+          mockGyms.forEach((gym) => {
+            batch.set(doc(db, 'gyms', gym.id.toString()), gym);
+          });
+          await batch.commit();
+        }
+
+        // Seed GymAdmins if empty
+        const adminsCol = collection(db, 'gymAdmins');
+        const adminsSnap = await getDocs(adminsCol);
+        if (adminsSnap.empty) {
+          const batch = writeBatch(db);
+          const initialGymAdmins: GymAdmin[] = [
+            {
+              id: 1,
+              gymId: 1,
+              name: 'Carlos Sede Mega',
+              email: 'carlos@megapower.fit',
+              phone: '+34 600 123 456',
+              status: 'Activo',
+              createdAt: '2026-06-08'
+            },
+            {
+              id: 2,
+              gymId: 2,
+              name: 'Sandra Zen Sede',
+              email: 'sandra@yogazen.fit',
+              phone: '+34 611 122 333',
+              status: 'Activo',
+              createdAt: '2026-06-08'
+            }
+          ];
+          initialGymAdmins.forEach((adm) => {
+            batch.set(doc(db, 'gymAdmins', adm.id.toString()), adm);
+          });
+          await batch.commit();
+        }
+
+        // Seed Planes if empty
+        const planesCol = collection(db, 'planes');
+        const planesSnap = await getDocs(planesCol);
+        if (planesSnap.empty) {
+          const batch = writeBatch(db);
+          mockPlanes.forEach((plan) => {
+            batch.set(doc(db, 'planes', plan.id.toString()), plan);
+          });
+          await batch.commit();
+        }
+
+        // Seed Clients if empty
+        const clientsCol = collection(db, 'clients');
+        const clientsSnap = await getDocs(clientsCol);
+        if (clientsSnap.empty) {
+          const batch = writeBatch(db);
+          mockClients.forEach((client) => {
+            batch.set(doc(db, 'clients', client.id.toString()), client);
+          });
+          await batch.commit();
+        }
+
+        // Seed Classes if empty
+        const classesCol = collection(db, 'classes');
+        const classesSnap = await getDocs(classesCol);
+        if (classesSnap.empty) {
+          const batch = writeBatch(db);
+          mockClasses.forEach((cls) => {
+            batch.set(doc(db, 'classes', cls.id.toString()), cls);
+          });
+          await batch.commit();
+        }
+
+        // Seed Products if empty
+        const productsCol = collection(db, 'products');
+        const productsSnap = await getDocs(productsCol);
+        if (productsSnap.empty) {
+          const batch = writeBatch(db);
+          mockProducts.forEach((p) => {
+            batch.set(doc(db, 'products', p.id.toString()), p);
+          });
+          await batch.commit();
+        }
+
+        // Seed Backups if empty
+        const backupsCol = collection(db, 'backups');
+        const backupsSnap = await getDocs(backupsCol);
+        if (backupsSnap.empty) {
+          const batch = writeBatch(db);
+          initialBackups.forEach((b) => {
+            batch.set(doc(db, 'backups', b.id), b);
+          });
+          await batch.commit();
+        }
+
+        // Seed Logs if empty
+        const logsCol = collection(db, 'logs');
+        const logsSnap = await getDocs(logsCol);
+        if (logsSnap.empty) {
+          const batch = writeBatch(db);
+          initialLogs.forEach((l) => {
+            batch.set(doc(db, 'logs', l.id), l);
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        console.error('Error bootstrapping default collection state into Firestore:', err);
+      }
+
+      if (!active) return;
+
+      // Realtime sub listeners
+      const unsubGyms = onSnapshot(collection(db, 'gyms'), (snap) => {
+        const list: Gym[] = [];
+        snap.forEach((d) => list.push(d.data() as Gym));
+        list.sort((a, b) => a.id - b.id);
+        setGyms(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'gyms'));
+
+      const unsubGymAdmins = onSnapshot(collection(db, 'gymAdmins'), (snap) => {
+        const list: GymAdmin[] = [];
+        snap.forEach((d) => list.push(d.data() as GymAdmin));
+        list.sort((a, b) => a.id - b.id);
+        setGymAdmins(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'gymAdmins'));
+
+      const unsubClients = onSnapshot(collection(db, 'clients'), (snap) => {
+        const list: Client[] = [];
+        snap.forEach((d) => list.push(d.data() as Client));
+        list.sort((a, b) => a.id - b.id);
+        setClients(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'clients'));
+
+      const unsubPlans = onSnapshot(collection(db, 'planes'), (snap) => {
+        const list: Plan[] = [];
+        snap.forEach((d) => list.push(d.data() as Plan));
+        list.sort((a, b) => a.id - b.id);
+        setPlanes(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'planes'));
+
+      const unsubClasses = onSnapshot(collection(db, 'classes'), (snap) => {
+        const list: ClassSession[] = [];
+        snap.forEach((d) => list.push(d.data() as ClassSession));
+        list.sort((a, b) => a.id - b.id);
+        setClasses(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'classes'));
+
+      const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
+        const list: ProductInventory[] = [];
+        snap.forEach((d) => list.push(d.data() as ProductInventory));
+        list.sort((a, b) => a.id - b.id);
+        setProducts(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
+
+      const unsubBackups = onSnapshot(collection(db, 'backups'), (snap) => {
+        const list: BackupFile[] = [];
+        snap.forEach((d) => list.push(d.data() as BackupFile));
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setBackups(list);
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'backups'));
+
+      const unsubLogs = onSnapshot(collection(db, 'logs'), (snap) => {
+        const list: LogEntry[] = [];
+        snap.forEach((d) => list.push(d.data() as LogEntry));
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        setLogs(list.slice(0, 100));
+      }, (err) => handleFirestoreError(err, OperationType.LIST, 'logs'));
+
+      setLoading(false);
+
+      return () => {
+        unsubGyms();
+        unsubGymAdmins();
+        unsubClients();
+        unsubPlans();
+        unsubClasses();
+        unsubProducts();
+        unsubBackups();
+        unsubLogs();
+      };
+    }
+
+    const unsubCleanupPromise = syncAndSeed();
+
+    return () => {
+      active = false;
+      unsubCleanupPromise.then((cleanupFn) => {
+        if (cleanupFn) cleanupFn();
+      });
+    };
+  }, []);
+
+  // System Logging helper controller to cloud
+  const handleLogAdd = async (
     service: 'Database' | 'Backup' | 'API' | 'Auth' | 'Security',
     level: 'info' | 'warn' | 'error' | 'success',
     message: string
   ) => {
     const timestamp = formatTime(new Date());
+    const id = `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const newEntry: LogEntry = {
-      id: `log-${Date.now()}`,
+      id,
       timestamp,
       level,
       service,
       message,
     };
-    setLogs((prev) => [...prev, newEntry]);
+    try {
+      await setDoc(doc(db, 'logs', id), newEntry);
+    } catch (err) {
+      console.error('Failed to log sync write to Firestore:', err);
+    }
   };
 
   // Role transition handler
   const handleRoleChange = (role: 'super_admin' | 'gym_admin' | 'client') => {
     setCurrentRole(role);
+    setImpersonatedBySuperAdmin(false); // Reset simulation banner if they click a role directly
     if (role === 'super_admin') {
       setActiveTab('super_console');
       handleLogAdd('Auth', 'info', 'SESIÓN CAMBIADA: Conectado con rol maestro Super Administrador.');
@@ -113,8 +336,30 @@ export default function App() {
     }
   };
 
+  // Impersonate / Login-As helper functions
+  const handleImpersonate = (role: 'gym_admin' | 'client', targetId: number) => {
+    setCurrentRole(role);
+    setImpersonatedBySuperAdmin(true);
+    if (role === 'gym_admin') {
+      setActiveGymId(targetId);
+      setActiveTab('overview');
+      handleLogAdd('Auth', 'success', `IMPERSONACIÓN: Sesión de Super Admin redirigida como administrador de Sede ID: ${targetId}`);
+    } else {
+      setActiveClientId(targetId);
+      setActiveTab('socio_portal');
+      handleLogAdd('Auth', 'success', `IMPERSONACIÓN: Sesión de Super Admin redirigida como socio del gimnasio ID: ${targetId}`);
+    }
+  };
+
+  const handleStopImpersonating = () => {
+    setCurrentRole('super_admin');
+    setActiveTab('super_console');
+    setImpersonatedBySuperAdmin(false);
+    handleLogAdd('Auth', 'info', 'IMPERSONACIÓN FINALIZADA: Sesión simulada finalizada. Retorno seguro al panel maestro.');
+  };
+
   // CRUD operation handlers
-  const handleAddClient = (newClient: Omit<Client, 'id' | 'qrCode'>) => {
+  const handleAddClient = async (newClient: Omit<Client, 'id' | 'qrCode'>) => {
     const clientId = clients.length > 0 ? Math.max(...clients.map((c) => c.id)) + 1 : 1;
     const clientEntity: Client = {
       ...newClient,
@@ -122,39 +367,99 @@ export default function App() {
       qrCode: `CLIENT_QR_${clientId}`,
     };
 
-    setClients((prev) => [...prev, clientEntity]);
-    handleLogAdd(
-      'Database',
-      'success',
-      `PDO SELECT/INSERT: Inscripto nuevo socio '${clientEntity.name}' en tabla \`clientes\` para Gym ID: ${clientEntity.gymId}`
-    );
-  };
-
-  const handleEditClient = (updatedClient: Client) => {
-    setClients((prev) =>
-      prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
-    );
-    handleLogAdd(
-      'Database',
-      'success',
-      `PDO UPDATE: Se actualizaron datos biométricos e IMC para el socio ID: ${updatedClient.id}`
-    );
-  };
-
-  const handleDeleteClient = (id: number) => {
-    const client = clients.find((c) => c.id === id);
-    setClients((prev) => prev.filter((c) => c.id !== id));
-    if (client) {
+    try {
+      await setDoc(doc(db, 'clients', clientId.toString()), clientEntity);
       handleLogAdd(
         'Database',
-        'warn',
-        `PDO DELETE: Eliminado el cliente '${client.name}' (ID: ${id}) del tenant asignado.`
+        'success',
+        `PDO SELECT/INSERT: Inscripto nuevo socio '${clientEntity.name}' en tabla \`clientes\` para Gym ID: ${clientEntity.gymId}`
       );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `clients/${clientId}`);
+    }
+  };
+
+  const handleEditClient = async (updatedClient: Client) => {
+    try {
+      await setDoc(doc(db, 'clients', updatedClient.id.toString()), updatedClient);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO UPDATE: Se actualizararon datos biométricos e IMC para el socio ID: ${updatedClient.id}`
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clients/${updatedClient.id}`);
+    }
+  };
+
+  const handleDeleteClient = async (id: number) => {
+    const client = clients.find((c) => c.id === id);
+    try {
+      await deleteDoc(doc(db, 'clients', id.toString()));
+      if (client) {
+        handleLogAdd(
+          'Database',
+          'warn',
+          `PDO DELETE: Eliminado el cliente '${client.name}' (ID: ${id}) del tenant asignado.`
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `clients/${id}`);
+    }
+  };
+
+  // GymAdmin CRUD operators (for Super Admin)
+  const handleAddGymAdmin = async (newAdmin: Omit<GymAdmin, 'id' | 'createdAt'>) => {
+    const adminId = gymAdmins.length > 0 ? Math.max(...gymAdmins.map((a) => a.id)) + 1 : 1;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const adminEntity: GymAdmin = {
+      ...newAdmin,
+      id: adminId,
+      createdAt: dateStr,
+    };
+    try {
+      await setDoc(doc(db, 'gymAdmins', adminId.toString()), adminEntity);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO INSERT: Se generó nueva cuenta administrador de gimnasio '${adminEntity.name}' para Sede ID: ${adminEntity.gymId}`
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `gymAdmins/${adminId}`);
+    }
+  };
+
+  const handleEditGymAdmin = async (updatedAdmin: GymAdmin) => {
+    try {
+      await setDoc(doc(db, 'gymAdmins', updatedAdmin.id.toString()), updatedAdmin);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO UPDATE: Modificación de cuenta administrador de sede '${updatedAdmin.name}' (ID: ${updatedAdmin.id})`
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `gymAdmins/${updatedAdmin.id}`);
+    }
+  };
+
+  const handleDeleteGymAdmin = async (id: number) => {
+    const admin = gymAdmins.find((a) => a.id === id);
+    try {
+      await deleteDoc(doc(db, 'gymAdmins', id.toString()));
+      if (admin) {
+        handleLogAdd(
+          'Database',
+          'warn',
+          `PDO DELETE: Cuenta administrador de gimnasio '${admin.name}' (ID: ${id}) eliminada permanentemente del sistema SaaS.`
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `gymAdmins/${id}`);
     }
   };
 
   // Gym/Sede CRUD operators (for Super Admin)
-  const handleAddGym = (newGym: Omit<Gym, 'id' | 'createdAt'>) => {
+  const handleAddGym = async (newGym: Omit<Gym, 'id' | 'createdAt'>) => {
     const gymId = gyms.length > 0 ? Math.max(...gyms.map((g) => g.id)) + 1 : 1;
     const dateStr = new Date().toISOString().split('T')[0];
     const gymEntity: Gym = {
@@ -162,96 +467,118 @@ export default function App() {
       id: gymId,
       createdAt: dateStr,
     };
-    setGyms((prev) => [...prev, gymEntity]);
+    try {
+      await setDoc(doc(db, 'gyms', gymId.toString()), gymEntity);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `gyms/${gymId}`);
+    }
   };
 
-  const handleUpdateGymStatus = (id: number, status: 'Activo' | 'Suspendido') => {
-    setGyms((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, status } : g))
-    );
+  const handleUpdateGymStatus = async (id: number, status: 'Activo' | 'Suspendido') => {
+    try {
+      await updateDoc(doc(db, 'gyms', id.toString()), { status });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `gyms/${id}`);
+    }
   };
 
-  const handleUpdateGymPlan = (id: number, planType: 'Básico' | 'Profesional' | 'Enterprise') => {
-    setGyms((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, planType } : g))
-    );
+  const handleUpdateGymPlan = async (id: number, planType: 'Básico' | 'Profesional' | 'Enterprise') => {
+    try {
+      await updateDoc(doc(db, 'gyms', id.toString()), { planType });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `gyms/${id}`);
+    }
   };
 
-  const handleDeleteGym = (id: number) => {
-    setGyms((prev) => prev.filter((g) => g.id !== id));
-    // Filter active gym if deleted
-    if (activeGymId === id) {
-      const remaining = gyms.filter((g) => g.id !== id);
-      if (remaining.length > 0) {
-        setActiveGymId(remaining[0].id);
+  const handleDeleteGym = async (id: number) => {
+    try {
+      await deleteDoc(doc(db, 'gyms', id.toString()));
+      // Filter active gym if deleted
+      if (activeGymId === id) {
+        const remaining = gyms.filter((g) => g.id !== id);
+        if (remaining.length > 0) {
+          setActiveGymId(remaining[0].id);
+        }
       }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `gyms/${id}`);
     }
   };
 
   // Socio/Client Portal activities
-  const handleBookClass = (classId: number) => {
-    setClasses((prev) =>
-      prev.map((cl) => {
-         if (cl.id === classId) {
-           return {
-             ...cl,
-             currentReservations: Math.min(cl.currentReservations + 1, cl.maxCapacity),
-           };
-         }
-         return cl;
-      })
-    );
+  const handleBookClass = async (classId: number) => {
+    const cl = classes.find((cls) => cls.id === classId);
+    if (!cl) return;
+    const nextReservations = Math.min(cl.currentReservations + 1, cl.maxCapacity);
+    try {
+      await updateDoc(doc(db, 'classes', classId.toString()), {
+        currentReservations: nextReservations,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `classes/${classId}`);
+    }
   };
 
-  const handleCancelBooking = (classId: number) => {
-    setClasses((prev) =>
-      prev.map((cl) => {
-         if (cl.id === classId) {
-           return {
-             ...cl,
-             currentReservations: Math.max(cl.currentReservations - 1, 0),
-           };
-         }
-         return cl;
-      })
-    );
+  const handleCancelBooking = async (classId: number) => {
+    const cl = classes.find((cls) => cls.id === classId);
+    if (!cl) return;
+    const nextReservations = Math.max(cl.currentReservations - 1, 0);
+    try {
+      await updateDoc(doc(db, 'classes', classId.toString()), {
+        currentReservations: nextReservations,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `classes/${classId}`);
+    }
   };
 
-  const handleBuyProduct = (productId: number) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-         if (p.id === productId) {
-           return {
-             ...p,
-             stock: Math.max(p.stock - 1, 0),
-           };
-         }
-         return p;
-      })
-    );
+  const handleBuyProduct = async (productId: number) => {
+    const p = products.find((prod) => prod.id === productId);
+    if (!p) return;
+    const nextStock = Math.max(p.stock - 1, 0);
+    try {
+      await updateDoc(doc(db, 'products', productId.toString()), {
+        stock: nextStock,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `products/${productId}`);
+    }
   };
 
-  const handleUpdateClientBiometrics = (clientId: number, weight: number, height: number) => {
-    setClients((prev) =>
-      prev.map((c) => {
-         if (c.id === clientId) {
-           const rawIMC = weight / ((height / 100) * (height / 100));
-           const imcValue = parseFloat(rawIMC.toFixed(2));
-           return {
-             ...c,
-             weight,
-             height,
-             imc: imcValue,
-           };
-         }
-         return c;
-      })
-    );
+  const handleUpdateClientBiometrics = async (clientId: number, weight: number, height: number) => {
+    const c = clients.find((client) => client.id === clientId);
+    if (!c) return;
+    const rawIMC = weight / ((height / 100) * (height / 100));
+    const imcValue = parseFloat(rawIMC.toFixed(2));
+    try {
+      await updateDoc(doc(db, 'clients', clientId.toString()), {
+        weight,
+        height,
+        imc: imcValue,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `clients/${clientId}`);
+    }
   };
 
-  const handleExecuteBackup = (newBackup: BackupFile) => {
-    setBackups((prev) => [newBackup, ...prev]);
+  const handleExecuteBackup = async (newBackup: BackupFile) => {
+    try {
+      await setDoc(doc(db, 'backups', newBackup.id), newBackup);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `backups/${newBackup.id}`);
+    }
   };
+
+  if (loading || gyms.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-6" id="dashboard_loading_screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4" id="loading_spinner"></div>
+        <p className="text-sm font-medium tracking-wide text-zinc-400" id="loading_message">
+          Estableciendo enlace de base de datos distribuidos en Firebase...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100" id="main_saas_dashboard_root">
@@ -460,6 +787,39 @@ export default function App() {
 
       {/* MOBILE HEADER & DRAWER MODULES */}
       <div className="flex-1 flex flex-col min-w-0" id="workspace_viewport">
+        {/* Impersonation Banner */}
+        {impersonatedBySuperAdmin && (
+          <div className="bg-indigo-600 text-slate-100 px-6 py-2.5 flex flex-wrap items-center justify-between border-b border-indigo-700 text-xs font-semibold z-40 sticky top-0" id="impersonation_banner">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">👁️</span>
+              <span>
+                <strong>Modo Vista (Impersonación)</strong> — Conectado como{' '}
+                {currentRole === 'gym_admin' ? (
+                  <span>
+                    Administrador de la Sede:{' '}
+                    <span className="underline font-bold text-white pr-1">
+                      {gyms.find((g) => g.id === activeGymId)?.name || `ID #${activeGymId}`}
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    Socio / Cliente:{' '}
+                    <span className="underline font-bold text-white pr-1">
+                      {clients.find((c) => c.id === activeClientId)?.name || `ID #${activeClientId}`}
+                    </span>
+                  </span>
+                )}
+              </span>
+            </div>
+            <button
+              onClick={handleStopImpersonating}
+              className="bg-slate-950 hover:bg-slate-900 transition text-emerald-400 border border-emerald-500/30 font-mono px-3 py-1 rounded-xl text-[10px] font-bold cursor-pointer"
+            >
+              [DETENER & VOLVER A MAESTRO]
+            </button>
+          </div>
+        )}
+
         <header className="lg:hidden h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 z-40 sticky top-0">
           <div className="flex items-center space-x-2.5">
             <span className="text-lg">🏋️</span>
@@ -612,6 +972,11 @@ export default function App() {
                   gyms={gyms}
                   clients={clients}
                   planes={planes}
+                  gymAdmins={gymAdmins}
+                  onAddGymAdmin={handleAddGymAdmin}
+                  onEditGymAdmin={handleEditGymAdmin}
+                  onDeleteGymAdmin={handleDeleteGymAdmin}
+                  onImpersonate={handleImpersonate}
                   onAddGym={handleAddGym}
                   onUpdateGymStatus={handleUpdateGymStatus}
                   onUpdateGymPlan={handleUpdateGymPlan}
@@ -627,6 +992,8 @@ export default function App() {
                   planes={planes}
                   classes={classes}
                   products={products}
+                  activeClientId={activeClientId}
+                  onActiveClientIdChange={setActiveClientId}
                   onBookClass={handleBookClass}
                   onCancelBooking={handleCancelBooking}
                   onBuyProduct={handleBuyProduct}

@@ -15,6 +15,16 @@ export interface Gym {
   createdAt: string;
 }
 
+export interface GymAdmin {
+  id: number;
+  gymId: number;
+  name: string;
+  email: string;
+  phone: string;
+  status: 'Activo' | 'Suspendido';
+  createdAt: string;
+}
+
 export interface Client {
   id: number;
   gymId: number;

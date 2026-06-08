@@ -1,0 +1,165 @@
+{
+  "entities": {
+    "Gym": {
+      "title": "Gym",
+      "description": "Información de la sede de gimnasio registrada en el SaaS.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "subdomain": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "planType": { "type": "string", "enum": ["Básico", "Profesional", "Enterprise"] },
+        "status": { "type": "string", "enum": ["Activo", "Suspendido"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "subdomain", "address", "phone", "email", "planType", "status", "createdAt"]
+    },
+    "GymAdmin": {
+      "title": "GymAdmin",
+      "description": "Cuentas de administrador asignadas para gestionar sedes específicas.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "gymId": { "type": "integer" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["Activo", "Suspendido"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "gymId", "name", "email", "phone", "status", "createdAt"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Ficha del socio / cliente conectado para cada gimnasio.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "gymId": { "type": "integer" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "planId": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Activo", "Vencido", "Congelado"] },
+        "membershipStart": { "type": "string" },
+        "membershipEnd": { "type": "string" },
+        "imc": { "type": "number" },
+        "weight": { "type": "number" },
+        "height": { "type": "number" },
+        "bloodType": { "type": "string" },
+        "qrCode": { "type": "string" },
+        "avatarUrl": { "type": "string" }
+      },
+      "required": ["id", "gymId", "name", "email", "phone", "planId", "status", "membershipStart", "membershipEnd", "imc", "weight", "height", "bloodType", "qrCode"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Plan de membresía disponible para socios.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "durationMonths": { "type": "integer" },
+        "benefits": { "type": "array" }
+      },
+      "required": ["id", "name", "price", "durationMonths", "benefits"]
+    },
+    "ClassSession": {
+      "title": "ClassSession",
+      "description": "Sesión de clases de fitness del gimnasio.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "gymId": { "type": "integer" },
+        "className": { "type": "string" },
+        "trainerName": { "type": "string" },
+        "scheduleTime": { "type": "string" },
+        "roomName": { "type": "string" },
+        "maxCapacity": { "type": "integer" },
+        "currentReservations": { "type": "integer" }
+      },
+      "required": ["id", "gymId", "className", "trainerName", "scheduleTime", "roomName", "maxCapacity", "currentReservations"]
+    },
+    "ProductInventory": {
+      "title": "ProductInventory",
+      "description": "Productos del stock de la sede.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "gymId": { "type": "integer" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Suplementos", "Ropa Deportiva", "Accesorios", "Equipos"] },
+        "stock": { "type": "integer" },
+        "minStock": { "type": "integer" },
+        "price": { "type": "number" },
+        "supplier": { "type": "string" }
+      },
+      "required": ["id", "gymId", "name", "category", "stock", "minStock", "price", "supplier"]
+    },
+    "BackupFile": {
+      "title": "BackupFile",
+      "description": "Información de respaldo MySQL.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "filename": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "sizeKb": { "type": "number" },
+        "tablesCount": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Completado", "Fallido"] }
+      },
+      "required": ["id", "filename", "createdAt", "sizeKb", "tablesCount", "status"]
+    },
+    "LogEntry": {
+      "title": "LogEntry",
+      "description": "Históricos / Logs del monitor de sistemas.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "level": { "type": "string", "enum": ["info", "warn", "error", "success"] },
+        "service": { "type": "string", "enum": ["API", "Database", "Backup", "Auth", "Security"] },
+        "message": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "level", "service", "message"]
+    }
+  },
+  "firestore": {
+    "/gyms/{gymId}": {
+      "schema": "Gym",
+      "description": "Colección de gimnasios (sedes)."
+    },
+    "/gymAdmins/{gymAdminId}": {
+      "schema": "GymAdmin",
+      "description": "Listado de cuentas de administrador de gimnasio creadas por el superadministrador."
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Colección de socios (clientes) de cada gimnasio."
+    },
+    "/planes/{planId}": {
+      "schema": "Plan",
+      "description": "Planes de membresía disponibles."
+    },
+    "/classes/{classId}": {
+      "schema": "ClassSession",
+      "description": "Clases programadas de fitness."
+    },
+    "/products/{productId}": {
+      "schema": "ProductInventory",
+      "description": "Stock de suplementos y productos."
+    },
+    "/backups/{backupId}": {
+      "schema": "BackupFile",
+      "description": "Lista de respaldos de MySQL realizados."
+    },
+    "/logs/{logId}": {
+      "schema": "LogEntry",
+      "description": "Monitor logs del servidor SaaS."
+    }
+  }
+}

@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Schema Validation Helpers
+    function isValidGym(data) {
+      return data.keys().hasAll(['id', 'name', 'subdomain', 'address', 'phone', 'email', 'planType', 'status', 'createdAt'])
+        && data.keys().size() == 9
+        && data.id is int
+        && data.name is string && data.name.size() <= 200
+        && data.subdomain is string && data.subdomain.size() <= 100
+        && data.email is string && data.email.size() <= 200;
+    }
+
+    function isValidClient(data) {
+      return data.keys().hasAll(['id', 'gymId', 'name', 'email', 'phone', 'planId', 'status', 'membershipStart', 'membershipEnd', 'imc', 'weight', 'height', 'bloodType', 'qrCode'])
+        && data.keys().size() >= 14
+        && data.id is int
+        && data.gymId is int
+        && data.name is string && data.name.size() <= 200
+        && data.email is string && data.email.size() <= 200;
+    }
+
+    function isValidPlan(data) {
+      return data.keys().hasAll(['id', 'name', 'price', 'durationMonths', 'benefits'])
+        && data.keys().size() == 5
+        && data.id is int
+        && data.name is string && data.name.size() <= 100;
+    }
+
+    function isValidClass(data) {
+      return data.keys().hasAll(['id', 'gymId', 'className', 'trainerName', 'scheduleTime', 'roomName', 'maxCapacity', 'currentReservations'])
+        && data.keys().size() == 8
+        && data.id is int
+        && data.gymId is int
+        && data.className is string && data.className.size() <= 100;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'gymId', 'name', 'category', 'stock', 'minStock', 'price', 'supplier'])
+        && data.keys().size() == 8
+        && data.id is int
+        && data.gymId is int
+        && data.name is string && data.name.size() <= 200;
+    }
+
+    function isValidBackup(data) {
+      return data.keys().hasAll(['id', 'filename', 'createdAt', 'sizeKb', 'tablesCount', 'status'])
+        && data.keys().size() == 6
+        && data.id is string
+        && data.filename is string && data.filename.size() <= 200;
+    }
+
+    function isValidLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'level', 'service', 'message'])
+        && data.keys().size() == 5
+        && data.id is string
+        && data.message is string && data.message.size() <= 1000;
+    }
+
+    // Rules matching collections
+    match /gyms/{gymId} {
+      allow read: if true;
+      allow create: if isValidGym(incoming());
+      allow update: if isValidGym(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'planType', 'name', 'address', 'phone', 'email'])
+      );
+      allow delete: if true;
+    }
+
+    match /clients/{clientId} {
+      allow read: if true;
+      allow create: if isValidClient(incoming());
+      allow update: if isValidClient(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'phone', 'status', 'planId', 'membershipStart', 'membershipEnd', 'imc', 'weight', 'height', 'bloodType', 'qrCode'])
+      );
+      allow delete: if true;
+    }
+
+    match /planes/{planId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    match /classes/{classId} {
+      allow read: if true;
+      allow create: if isValidClass(incoming());
+      allow update: if isValidClass(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['currentReservations', 'className', 'trainerName', 'scheduleTime', 'roomName', 'maxCapacity'])
+      );
+      allow delete: if true;
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isValidProduct(incoming());
+      allow update: if isValidProduct(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'name', 'category', 'minStock', 'price', 'supplier'])
+      );
+      allow delete: if true;
+    }
+
+    match /backups/{backupId} {
+      allow read: if true;
+      allow create: if isValidBackup(incoming());
+      allow update: if isValidBackup(incoming());
+      allow delete: if true;
+    }
+
+    match /logs/{logId} {
+      allow read: if true;
+      allow create: if isValidLog(incoming());
+      allow update: if isValidLog(incoming());
+      allow delete: if true;
+    }
+  }
+}

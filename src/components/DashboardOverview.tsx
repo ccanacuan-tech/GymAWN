@@ -29,7 +29,17 @@ export default function DashboardOverview({
 }: DashboardOverviewProps) {
   
   // Computations
-  const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0];
+  const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0] || {
+    id: activeGymId,
+    name: 'Mega Power Gym',
+    subdomain: 'megapower',
+    address: 'Av. Fitness Centro 102',
+    phone: '',
+    email: '',
+    planType: 'Básico',
+    status: 'Activo',
+    createdAt: ''
+  };
   const gymClients = clients.filter(c => c.gymId === activeGymId);
   const activeClients = gymClients.filter(c => c.status === 'Activo');
   const criticalProducts = products.filter(p => p.gymId === activeGymId && p.stock <= p.minStock);

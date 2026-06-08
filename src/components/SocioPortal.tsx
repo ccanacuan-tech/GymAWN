@@ -14,6 +14,8 @@ interface SocioPortalProps {
   planes: Plan[];
   classes: ClassSession[];
   products: ProductInventory[];
+  activeClientId: number;
+  onActiveClientIdChange: (id: number) => void;
   onBookClass: (classId: number) => void;
   onCancelBooking: (classId: number) => void;
   onBuyProduct: (productId: number) => void;
@@ -27,22 +29,63 @@ export default function SocioPortal({
   planes,
   classes,
   products,
+  activeClientId,
+  onActiveClientIdChange,
   onBookClass,
   onCancelBooking,
   onBuyProduct,
   onUpdateClientBiometrics,
   onLogAdd,
 }: SocioPortalProps) {
-  // Select active client simulation in portal
-  const [selectedClientId, setSelectedClientId] = useState<number>(clients[0]?.id || 1);
-  const activeClient = clients.find(c => c.id === selectedClientId) || clients[0];
-  const activeGym = gyms.find(g => g.id === activeClient.gymId) || gyms[0];
-  const activePlan = planes.find(p => p.id === activeClient.planId);
+  // Use lifted active client ID prop
+  const selectedClientId = activeClientId || clients[0]?.id || 1;
+  const activeClient = clients.find(c => c.id === selectedClientId) || clients[0] || {
+    id: selectedClientId,
+    gymId: 1,
+    name: 'Cargando...',
+    email: 'cliente@example.com',
+    phone: '',
+    planId: 1,
+    status: 'Activo',
+    membershipStart: '',
+    membershipEnd: '',
+    weight: 70,
+    height: 170,
+    imc: 24.22,
+    bloodType: 'O+',
+    qrCode: 'LOADING',
+  };
+  const activeGym = gyms.find(g => g.id === activeClient.gymId) || gyms[0] || {
+    id: 1,
+    name: 'Mega Power Gym',
+    subdomain: 'megapower',
+    address: 'Av. Fitness Centro 102',
+    phone: '',
+    email: '',
+    planType: 'Básico',
+    status: 'Activo',
+    createdAt: ''
+  };
+  const activePlan = planes.find(p => p.id === activeClient.planId) || planes[0] || {
+    id: 1,
+    name: 'Plan Mensual Fuerza',
+    price: 35.0,
+    durationMonths: 1,
+    benefits: []
+  };
 
   // States for biometric quick fields edit
   const [weightInput, setWeightInput] = useState<number>(activeClient.weight);
   const [heightInput, setHeightInput] = useState<number>(activeClient.height);
   const [isEditingBiometrics, setIsEditingBiometrics] = useState(false);
+
+  // Sync state if activeClient changes (impersonation trigger)
+  React.useEffect(() => {
+    if (activeClient) {
+      setWeightInput(activeClient.weight);
+      setHeightInput(activeClient.height);
+    }
+  }, [selectedClientId, activeClient?.id]);
 
   // Checkout alerts states mockup
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
@@ -128,7 +171,7 @@ export default function SocioPortal({
             value={selectedClientId}
             onChange={(e) => {
               const cid = Number(e.target.value);
-              setSelectedClientId(cid);
+              onActiveClientIdChange(cid);
               const cEntity = clients.find(cl => cl.id === cid);
               if (cEntity) {
                 setWeightInput(cEntity.weight);

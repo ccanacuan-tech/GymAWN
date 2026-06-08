@@ -56,7 +56,17 @@ export default function GymSaaSManager({
   const [editWeight, setEditWeight] = useState(70);
   const [editHeight, setEditHeight] = useState(170);
 
-  const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0];
+  const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0] || {
+    id: activeGymId,
+    name: 'Mega Power Gym',
+    subdomain: 'megapower',
+    address: 'Av. Fitness Centro 102',
+    phone: '',
+    email: '',
+    planType: 'Básico',
+    status: 'Activo',
+    createdAt: ''
+  };
 
   // Filters based on active Gym (Tenant ID isolation!)
   const gymClients = clients.filter(
