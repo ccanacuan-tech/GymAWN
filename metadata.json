@@ -1,0 +1,6 @@
+{
+  "name": "SaaS Gimnasios PHP",
+  "description": "Plataforma SaaS para administración de gimnasios con código PHP y MySQL listo para despliegue, sistema de monitoreo y respaldos automáticos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
