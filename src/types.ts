@@ -45,6 +45,7 @@ export interface Client {
 
 export interface Plan {
   id: number;
+  gymId?: number;
   name: string;
   price: number;
   durationMonths: number;
@@ -98,3 +99,12 @@ export interface ServerMetrics {
   responseTimeMs: number;
   apiSuccessRate: number;
 }
+
+export interface Toast {
+  id: string;
+  title?: string;
+  message: string;
+  type: 'success' | 'info' | 'warn' | 'error';
+  duration?: number;
+}
+

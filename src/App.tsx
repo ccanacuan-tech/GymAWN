@@ -14,6 +14,7 @@ import {
   BackupFile,
   LogEntry,
   ServerMetrics,
+  Toast,
 } from './types';
 import {
   mockPlanes,
@@ -31,9 +32,9 @@ import DashboardOverview from './components/DashboardOverview';
 import GymSaaSManager from './components/GymSaaSManager';
 import PHPDeployer from './components/PHPDeployer';
 import RealTimeMonitor from './components/RealTimeMonitor';
-import ManualInstallGuide from './components/ManualInstallGuide';
 import SuperAdminConsole from './components/SuperAdminConsole';
 import SocioPortal from './components/SocioPortal';
+import LoginScreen from './components/LoginScreen';
 
 import {
   LayoutDashboard,
@@ -51,6 +52,11 @@ import {
   Shield,
   Smartphone,
   Sparkles,
+  CheckCircle2,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  LogOut,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -81,13 +87,54 @@ export default function App() {
   const [serverMetrics, setServerMetrics] = useState<ServerMetrics>(generateMetrics());
   const [loading, setLoading] = useState(true);
 
+  // Session authentication states
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem('gym_saas_is_logged_in') === 'true';
+  });
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>(() => {
+    return localStorage.getItem('gym_saas_user_email') || '';
+  });
+
   // Workspace configuration states
-  const [activeGymId, setActiveGymId] = useState<number>(1);
-  const [activeClientId, setActiveClientId] = useState<number>(1);
-  const [currentRole, setCurrentRole] = useState<'super_admin' | 'gym_admin' | 'client'>('gym_admin');
+  const [activeGymId, setActiveGymId] = useState<number>(() => {
+    return Number(localStorage.getItem('gym_saas_active_gym_id')) || 1;
+  });
+  const [activeClientId, setActiveClientId] = useState<number>(() => {
+    return Number(localStorage.getItem('gym_saas_active_client_id')) || 1;
+  });
+  const [currentRole, setCurrentRole] = useState<'super_admin' | 'gym_admin' | 'client'>(() => {
+    return (localStorage.getItem('gym_saas_role') as any) || 'gym_admin';
+  });
   const [impersonatedBySuperAdmin, setImpersonatedBySuperAdmin] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const role = localStorage.getItem('gym_saas_role') || 'gym_admin';
+    if (role === 'super_admin') return 'super_console';
+    if (role === 'client') return 'socio_portal';
+    return 'overview';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Toast Notifications system state
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = (
+    message: string,
+    type: 'success' | 'info' | 'warn' | 'error' = 'success',
+    title?: string,
+    duration: number = 4000
+  ) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const newToast: Toast = { id, message, type, title, duration };
+    setToasts((prev) => [...prev, newToast]);
+
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, duration);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // Dynamic slow-polling logs simulation for resource counters
   useEffect(() => {
@@ -320,6 +367,52 @@ export default function App() {
     }
   };
 
+  // Session handlers
+  const handleLogin = (role: 'super_admin' | 'gym_admin' | 'client', email: string, gymId: number, clientId: number) => {
+    localStorage.setItem('gym_saas_is_logged_in', 'true');
+    localStorage.setItem('gym_saas_role', role);
+    localStorage.setItem('gym_saas_user_email', email);
+    localStorage.setItem('gym_saas_active_gym_id', gymId.toString());
+    localStorage.setItem('gym_saas_active_client_id', clientId.toString());
+
+    setIsLoggedIn(true);
+    setCurrentRole(role);
+    setCurrentUserEmail(email);
+    setActiveGymId(gymId);
+    setActiveClientId(clientId);
+    setImpersonatedBySuperAdmin(false);
+
+    if (role === 'super_admin') {
+      setActiveTab('super_console');
+    } else if (role === 'client') {
+      setActiveTab('socio_portal');
+    } else {
+      setActiveTab('overview');
+    }
+
+    handleLogAdd('Auth', 'success', `INICIO DE SESIÓN EXITOSO: Perfil '${role}' conectado como '${email}'.`);
+    showToast(`Conectado correctamente como ${email}`, 'success', 'Sesión Iniciada');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('gym_saas_is_logged_in');
+    localStorage.removeItem('gym_saas_role');
+    localStorage.removeItem('gym_saas_user_email');
+    localStorage.removeItem('gym_saas_active_gym_id');
+    localStorage.removeItem('gym_saas_active_client_id');
+
+    setIsLoggedIn(false);
+    setCurrentRole('gym_admin');
+    setCurrentUserEmail('');
+    setActiveGymId(1);
+    setActiveClientId(1);
+    setImpersonatedBySuperAdmin(false);
+    setActiveTab('overview');
+
+    handleLogAdd('Auth', 'info', 'SESIÓN CERRADA: El usuario ha desconectado su sesión de forma activa.');
+    showToast('Sesión de usuario finalizada correctamente.', 'info', 'Sesión Cerrada');
+  };
+
   // Role transition handler
   const handleRoleChange = (role: 'super_admin' | 'gym_admin' | 'client') => {
     setCurrentRole(role);
@@ -374,8 +467,14 @@ export default function App() {
         'success',
         `PDO SELECT/INSERT: Inscripto nuevo socio '${clientEntity.name}' en tabla \`clientes\` para Gym ID: ${clientEntity.gymId}`
       );
+      showToast(
+        `Socio '${clientEntity.name}' registrado con ID #${clientId} en Sede ID #${clientEntity.gymId}.`,
+        'success',
+        'Socio Registrado'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `clients/${clientId}`);
+      showToast('Error al registrar socio.', 'error', 'Error');
     }
   };
 
@@ -387,8 +486,14 @@ export default function App() {
         'success',
         `PDO UPDATE: Se actualizararon datos biométricos e IMC para el socio ID: ${updatedClient.id}`
       );
+      showToast(
+        `Datos y estado del socio '${updatedClient.name}' actualizados con éxito.`,
+        'success',
+        'Socio Actualizado'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `clients/${updatedClient.id}`);
+      showToast('Error al actualizar socio.', 'error', 'Error');
     }
   };
 
@@ -402,9 +507,15 @@ export default function App() {
           'warn',
           `PDO DELETE: Eliminado el cliente '${client.name}' (ID: ${id}) del tenant asignado.`
         );
+        showToast(
+          `Socio '${client.name}' eliminado permanentemente de la sede.`,
+          'warn',
+          'Socio Eliminado'
+        );
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `clients/${id}`);
+      showToast('Error al eliminar socio.', 'error', 'Error');
     }
   };
 
@@ -424,8 +535,14 @@ export default function App() {
         'success',
         `PDO INSERT: Se generó nueva cuenta administrador de gimnasio '${adminEntity.name}' para Sede ID: ${adminEntity.gymId}`
       );
+      showToast(
+        `Cuenta para administrador '${adminEntity.name}' generada correctamente para la Sede ID #${adminEntity.gymId}.`,
+        'success',
+        'Administrador Creado'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `gymAdmins/${adminId}`);
+      showToast('Error al crear administrador.', 'error', 'Error');
     }
   };
 
@@ -437,8 +554,14 @@ export default function App() {
         'success',
         `PDO UPDATE: Modificación de cuenta administrador de sede '${updatedAdmin.name}' (ID: ${updatedAdmin.id})`
       );
+      showToast(
+        `Cuenta del administrador '${updatedAdmin.name}' editada con éxito.`,
+        'success',
+        'Administrador Modificado'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `gymAdmins/${updatedAdmin.id}`);
+      showToast('Error al actualizar cuenta.', 'error', 'Error');
     }
   };
 
@@ -452,9 +575,15 @@ export default function App() {
           'warn',
           `PDO DELETE: Cuenta administrador de gimnasio '${admin.name}' (ID: ${id}) eliminada permanentemente del sistema SaaS.`
         );
+        showToast(
+          `Administrador de sede '${admin.name}' eliminado correctamente.`,
+          'warn',
+          'Administrador Eliminado'
+        );
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `gymAdmins/${id}`);
+      showToast('Error al eliminar cuenta.', 'error', 'Error');
     }
   };
 
@@ -469,24 +598,42 @@ export default function App() {
     };
     try {
       await setDoc(doc(db, 'gyms', gymId.toString()), gymEntity);
+      showToast(
+        `Sede franquiciada '${gymEntity.name}' creada bajo subdominio '${gymEntity.subdomain}.fit'.`,
+        'success',
+        'Nueva Sede Registrada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `gyms/${gymId}`);
+      showToast('Error al registrar sede.', 'error', 'Error');
     }
   };
 
   const handleUpdateGymStatus = async (id: number, status: 'Activo' | 'Suspendido') => {
     try {
       await updateDoc(doc(db, 'gyms', id.toString()), { status });
+      showToast(
+        `Estado de la sede ID #${id} establecido a '${status}'.`,
+        'info',
+        'Sede Sincronizada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `gyms/${id}`);
+      showToast('Error al actualizar estado.', 'error', 'Error');
     }
   };
 
   const handleUpdateGymPlan = async (id: number, planType: 'Básico' | 'Profesional' | 'Enterprise') => {
     try {
       await updateDoc(doc(db, 'gyms', id.toString()), { planType });
+      showToast(
+        `Suscripción de Sede ID #${id} renovada a Plan ${planType}.`,
+        'success',
+        'SaaS Renovado'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `gyms/${id}`);
+      showToast('Error al renovar plan.', 'error', 'Error');
     }
   };
 
@@ -500,8 +647,14 @@ export default function App() {
           setActiveGymId(remaining[0].id);
         }
       }
+      showToast(
+        `Sede ID #${id} y su tenant database remotos eliminados.`,
+        'warn',
+        'Sede Eliminada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `gyms/${id}`);
+      showToast('Error al eliminar sede.', 'error', 'Error');
     }
   };
 
@@ -514,8 +667,14 @@ export default function App() {
       await updateDoc(doc(db, 'classes', classId.toString()), {
         currentReservations: nextReservations,
       });
+      showToast(
+        `Reserva completada para la clase '${cl.className}'.`,
+        'success',
+        'Clase Reservada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `classes/${classId}`);
+      showToast('Error al reservar clase.', 'error', 'Error');
     }
   };
 
@@ -527,8 +686,14 @@ export default function App() {
       await updateDoc(doc(db, 'classes', classId.toString()), {
         currentReservations: nextReservations,
       });
+      showToast(
+        `Cupo liberado con éxito en la clase '${cl.className}'.`,
+        'info',
+        'Reserva Anulada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `classes/${classId}`);
+      showToast('Error al cancelar reserva.', 'error', 'Error');
     }
   };
 
@@ -540,8 +705,14 @@ export default function App() {
       await updateDoc(doc(db, 'products', productId.toString()), {
         stock: nextStock,
       });
+      showToast(
+        `Compra de '${p.name}' procesada correctamente por el TPV virtual.`,
+        'success',
+        'Compra en Tienda'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `products/${productId}`);
+      showToast('Error al comprar producto.', 'error', 'Error');
     }
   };
 
@@ -556,16 +727,169 @@ export default function App() {
         height,
         imc: imcValue,
       });
+      showToast(
+        `Ficha biométrica corporal actualizada con éxito para el socio '${c.name}'.`,
+        'success',
+        'Biometría Guardada'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `clients/${clientId}`);
+      showToast('Error al actualizar datos corporales.', 'error', 'Error');
+    }
+  };
+
+  // Plan CRUD operators
+  const handleAddPlan = async (newPlan: Omit<Plan, 'id'>) => {
+    const planId = planes.length > 0 ? Math.max(...planes.map((p) => p.id)) + 1 : 1;
+    const planEntity: Plan = {
+      ...newPlan,
+      id: planId,
+    };
+    try {
+      await setDoc(doc(db, 'planes', planId.toString()), planEntity);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO INSERT: Se registró nueva membresía '${planEntity.name}' en la tabla \`planes\`.`
+      );
+      showToast(
+        `Membresía '${planEntity.name}' del gimnasio creada con éxito.`,
+        'success',
+        'Membresía Creada'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `planes/${planId}`);
+      showToast('Error al registrar membresía.', 'error', 'Error');
+    }
+  };
+
+  const handleDeletePlan = async (id: number) => {
+    const plan = planes.find((p) => p.id === id);
+    try {
+      await deleteDoc(doc(db, 'planes', id.toString()));
+      if (plan) {
+        handleLogAdd(
+          'Database',
+          'warn',
+          `PDO DELETE: Membresía '${plan.name}' eliminada correctamente de la base de datos.`
+        );
+        showToast(
+          `Membresía '${plan.name}' eliminada permanentemente.`,
+          'warn',
+          'Membresía Eliminada'
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `planes/${id}`);
+      showToast('Error al eliminar membresía.', 'error', 'Error');
+    }
+  };
+
+  // Class CRUD operators
+  const handleAddClass = async (newClass: Omit<ClassSession, 'id'>) => {
+    const classId = classes.length > 0 ? Math.max(...classes.map((c) => c.id)) + 1 : 1;
+    const classEntity: ClassSession = {
+      ...newClass,
+      id: classId,
+    };
+    try {
+      await setDoc(doc(db, 'classes', classId.toString()), classEntity);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO INSERT: Se agendó una nueva clase colectiva '${classEntity.className}' en la tabla \`clases\`.`
+      );
+      showToast(
+        `Clase colectiva '${classEntity.className}' agendada para la sede.`,
+        'success',
+        'Clase Programada'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `classes/${classId}`);
+      showToast('Error al registrar clase colectiva.', 'error', 'Error');
+    }
+  };
+
+  const handleDeleteClass = async (id: number) => {
+    const cl = classes.find((c) => c.id === id);
+    try {
+      await deleteDoc(doc(db, 'classes', id.toString()));
+      if (cl) {
+        handleLogAdd(
+          'Database',
+          'warn',
+          `PDO DELETE: Cancelación de clase colectiva '${cl.className}' (ID: ${id}) de forma permanente.`
+        );
+        showToast(
+          `La clase colectiva '${cl.className}' ha sido suspendida y removida.`,
+          'warn',
+          'Clase Suspendida'
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `classes/${id}`);
+      showToast('Error al suspender clase colectiva.', 'error', 'Error');
+    }
+  };
+
+  // Product CRUD operators
+  const handleAddProduct = async (newProduct: Omit<ProductInventory, 'id'>) => {
+    const productId = products.length > 0 ? Math.max(...products.map((p) => p.id)) + 1 : 1;
+    const productEntity: ProductInventory = {
+      ...newProduct,
+      id: productId,
+    };
+    try {
+      await setDoc(doc(db, 'products', productId.toString()), productEntity);
+      handleLogAdd(
+        'Database',
+        'success',
+        `PDO INSERT: Se ingresaron ${productEntity.stock} unidades de '${productEntity.name}' en la tabla \`inventarios\`.`
+      );
+      showToast(
+        `Producto '${productEntity.name}' registrado exitosamente en almacén.`,
+        'success',
+        'Producto Registrado'
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `products/${productId}`);
+      showToast('Error al registrar producto.', 'error', 'Error');
+    }
+  };
+
+  const handleDeleteProduct = async (id: number) => {
+    const p = products.find((prod) => prod.id === id);
+    try {
+      await deleteDoc(doc(db, 'products', id.toString()));
+      if (p) {
+        handleLogAdd(
+          'Database',
+          'warn',
+          `PDO DELETE: Eliminado el producto '${p.name}' del catálogo de inventarios de tienda.`
+        );
+        showToast(
+          `Producto '${p.name}' eliminado permanentemente del catálogo.`,
+          'warn',
+          'Producto Eliminado'
+        );
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
+      showToast('Error al eliminar producto.', 'error', 'Error');
     }
   };
 
   const handleExecuteBackup = async (newBackup: BackupFile) => {
     try {
       await setDoc(doc(db, 'backups', newBackup.id), newBackup);
+      showToast(
+        `Punto de restauración de MySQL '${newBackup.filename}' generado óptimamente.`,
+        'success',
+        'Respaldo Exitoso'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `backups/${newBackup.id}`);
+      showToast('Error al generar respaldo.', 'error', 'Error');
     }
   };
 
@@ -577,6 +901,17 @@ export default function App() {
           Estableciendo enlace de base de datos distribuidos en Firebase...
         </p>
       </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <LoginScreen
+        gyms={gyms}
+        clients={clients}
+        gymAdmins={gymAdmins}
+        onLogin={handleLogin}
+      />
     );
   }
 
@@ -759,19 +1094,11 @@ export default function App() {
           )}
 
           <button
-            onClick={() => setActiveTab('guide')}
-            className={`w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-xs font-semibold transition ${
-              activeTab === 'guide'
-                ? currentRole === 'super_admin'
-                  ? 'bg-indigo-500/10 text-indigo-400 font-bold border border-indigo-500/20'
-                  : currentRole === 'client'
-                  ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20'
-                  : 'bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-850/40 border border-transparent'
-            }`}
+            onClick={handleLogout}
+            className="w-full flex items-center space-x-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-rose-400 hover:text-white hover:bg-rose-950/40 border border-transparent transition cursor-pointer"
           >
-            <FolderOpen size={15} />
-            <span>Manual de Instalación</span>
+            <LogOut size={15} />
+            <span>Cerrar Sesión</span>
           </button>
         </nav>
 
@@ -1008,9 +1335,11 @@ export default function App() {
                   clients={clients}
                   products={products}
                   planes={planes}
+                  classes={classes}
                   activeGymId={activeGymId}
                   setActiveGymId={setActiveGymId}
                   onNavigate={setActiveTab}
+                  currentRole={currentRole}
                 />
               )}
 
@@ -1025,6 +1354,12 @@ export default function App() {
                   onAddClient={handleAddClient}
                   onEditClient={handleEditClient}
                   onDeleteClient={handleDeleteClient}
+                  onAddPlan={handleAddPlan}
+                  onDeletePlan={handleDeletePlan}
+                  onAddClass={handleAddClass}
+                  onDeleteClass={handleDeleteClass}
+                  onAddProduct={handleAddProduct}
+                  onDeleteProduct={handleDeleteProduct}
                 />
               )}
 
@@ -1045,12 +1380,71 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'guide' && (
-                <ManualInstallGuide />
-              )}
+
             </motion.div>
           </AnimatePresence>
         </main>
+      </div>
+
+      {/* Toast Notification Layer */}
+      <div 
+        className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none" 
+        id="toast-notification-layer"
+      >
+        <AnimatePresence>
+          {toasts.map((toast) => {
+            const Icon = {
+              success: CheckCircle2,
+              info: Info,
+              warn: AlertTriangle,
+              error: AlertCircle,
+            }[toast.type];
+
+            const typeStyles = {
+              success: 'border-emerald-500/20 shadow-emerald-500/5 bg-slate-900 border border-emerald-500/30 text-emerald-400 backdrop-blur-md',
+              info: 'border-indigo-500/20 shadow-indigo-500/5 bg-slate-900 border border-indigo-500/30 text-indigo-400 backdrop-blur-md',
+              warn: 'border-amber-500/20 shadow-amber-500/5 bg-slate-900 border border-amber-500/30 text-amber-500 backdrop-blur-md',
+              error: 'border-rose-500/20 shadow-rose-500/5 bg-slate-900 border border-rose-500/30 text-rose-500 backdrop-blur-md',
+            }[toast.type];
+
+            return (
+              <motion.div
+                key={toast.id}
+                initial={{ opacity: 0, x: 100, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 100, scale: 0.9, transition: { duration: 0.15 } }}
+                className={`p-4 rounded-xl shadow-xl flex gap-3 items-start pointer-events-auto relative ${typeStyles}`}
+                onClick={() => dismissToast(toast.id)}
+                role="alert"
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="mt-0.5 shrink-0">
+                  <Icon size={16} />
+                </div>
+                <div className="flex-1 space-y-0.5 text-left">
+                  {toast.title && (
+                    <div className="text-[10px] font-bold font-mono tracking-wider text-slate-100 uppercase">
+                      {toast.title}
+                    </div>
+                  )}
+                  <div className="text-[11px] leading-relaxed text-slate-300 font-sans">
+                    {toast.message}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dismissToast(toast.id);
+                  }}
+                  className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition absolute top-2 right-2"
+                >
+                  <X size={10} />
+                </button>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
     </div>
   );

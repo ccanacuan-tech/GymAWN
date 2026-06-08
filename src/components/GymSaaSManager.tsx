@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { Gym, Client, Plan, ClassSession, ProductInventory } from '../types';
-import { Plus, Search, Trash2, Edit, Save, Calculator, BookOpen, Layers, Check, ShoppingBag, Eye } from 'lucide-react';
+import { Plus, Search, Trash2, Edit, Save, Calculator, BookOpen, Layers, Check, ShoppingBag, Eye, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface GymSaaSManagerProps {
@@ -18,6 +18,12 @@ interface GymSaaSManagerProps {
   onAddClient: (newClient: Omit<Client, 'id' | 'qrCode'>) => void;
   onEditClient: (client: Client) => void;
   onDeleteClient: (id: number) => void;
+  onAddPlan?: (newPlan: Omit<Plan, 'id'>) => void;
+  onDeletePlan?: (id: number) => void;
+  onAddClass?: (newClass: Omit<ClassSession, 'id'>) => void;
+  onDeleteClass?: (id: number) => void;
+  onAddProduct?: (newProduct: Omit<ProductInventory, 'id'>) => void;
+  onDeleteProduct?: (id: number) => void;
 }
 
 export default function GymSaaSManager({
@@ -30,6 +36,12 @@ export default function GymSaaSManager({
   onAddClient,
   onEditClient,
   onDeleteClient,
+  onAddPlan,
+  onDeletePlan,
+  onAddClass,
+  onDeleteClass,
+  onAddProduct,
+  onDeleteProduct,
 }: GymSaaSManagerProps) {
   const [subTab, setSubTab] = useState<'clients' | 'plans' | 'classes' | 'inventory'>('clients');
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,6 +68,30 @@ export default function GymSaaSManager({
   const [editWeight, setEditWeight] = useState(70);
   const [editHeight, setEditHeight] = useState(170);
 
+  // New Plan Form inputs
+  const [isAddingPlan, setIsAddingPlan] = useState(false);
+  const [planName, setPlanName] = useState('');
+  const [planPrice, setPlanPrice] = useState(30.0);
+  const [planDuration, setPlanDuration] = useState(1);
+  const [planBenefits, setPlanBenefits] = useState('');
+
+  // New Class Form inputs
+  const [isAddingClass, setIsAddingClass] = useState(false);
+  const [clsClassName, setClsClassName] = useState('');
+  const [clsTrainer, setClsTrainer] = useState('');
+  const [clsSchedule, setClsSchedule] = useState('');
+  const [clsRoom, setClsRoom] = useState('');
+  const [clsCapacity, setClsCapacity] = useState(20);
+
+  // New Product Form inputs
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [prodName, setProdName] = useState('');
+  const [prodCategory, setProdCategory] = useState<'Suplementos' | 'Ropa Deportiva' | 'Accesorios' | 'Equipos'>('Suplementos');
+  const [prodPrice, setProdPrice] = useState(15.0);
+  const [prodStock, setProdStock] = useState(10);
+  const [prodMinStock, setProdMinStock] = useState(3);
+  const [prodSupplier, setProdSupplier] = useState('');
+
   const activeGym = gyms.find(g => g.id === activeGymId) || gyms[0] || {
     id: activeGymId,
     name: 'Mega Power Gym',
@@ -78,6 +114,9 @@ export default function GymSaaSManager({
   const gymClasses = classes.filter(
     (cl) => cl.gymId === activeGymId && cl.className.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const gymPlanes = planes.filter(
+    (p) => !p.gymId || p.gymId === activeGymId
+  );
 
   // Auto calculate BMI (IMC)
   const calculateIMC = (weight: number, heightCm: number) => {
@@ -91,6 +130,62 @@ export default function GymSaaSManager({
     if (imc < 25) return { text: 'Normal', color: 'text-emerald-400' };
     if (imc < 30) return { text: 'Sobrepeso', color: 'text-amber-500' };
     return { text: 'Obesidad', color: 'text-rose-500' };
+  };
+
+  const handleDownloadCSV = () => {
+    // 1. Create headers
+    const headers = [
+      'ID de Socio',
+      'Nombre Completo',
+      'Correo Electronico',
+      'Telefono',
+      'Plan de Membresia',
+      'Fecha Inicio',
+      'Fecha Fin',
+      'Peso (kg)',
+      'Estatura (cm)',
+      'IMC',
+      'Grupo Sanguineo',
+      'Estado'
+    ];
+
+    // 2. Map data
+    const rows = gymClients.map(client => {
+      const clientPlan = planes.find(p => p.id === client.planId);
+      return [
+        client.id,
+        `"${client.name.replace(/"/g, '""')}"`,
+        `"${(client.email || '').replace(/"/g, '""')}"`,
+        `"${(client.phone || '').replace(/"/g, '""')}"`,
+        `"${(clientPlan?.name || '').replace(/"/g, '""')}"`,
+        `"${client.membershipStart}"`,
+        `"${client.membershipEnd}"`,
+        client.weight,
+        client.height,
+        client.imc,
+        `"${client.bloodType || ''}"`,
+        `"${client.status}"`
+      ];
+    });
+
+    // 3. Assemble CSV string
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\r\n');
+
+    // 4. Create blob and download link with UTF-8 BOM
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    
+    const cleanGymName = activeGym.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    link.href = url;
+    link.setAttribute('download', `reporte_socios_${cleanGymName}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const currentIMC = calculateIMC(newWeight, newHeight);
@@ -237,15 +332,28 @@ export default function GymSaaSManager({
               />
             </div>
 
-            {/* Addition trigger */}
-            <button
-              id="btn_open_add_client"
-              onClick={() => setIsAdding(!isAdding)}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition self-start sm:self-auto cursor-pointer"
-            >
-              <Plus size={14} />
-              <span>Inscribir Nuevo Socio</span>
-            </button>
+            {/* Action buttons */}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <button
+                id="btn_download_clients_csv"
+                onClick={handleDownloadCSV}
+                disabled={gymClients.length === 0}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-750 text-slate-100 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                title="Descargar padrón de socios en formato CSV"
+              >
+                <Download size={14} className="text-emerald-400" />
+                <span>Exportar CSV</span>
+              </button>
+
+              <button
+                id="btn_open_add_client"
+                onClick={() => setIsAdding(!isAdding)}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Plus size={14} />
+                <span>Inscribir Nuevo Socio</span>
+              </button>
+            </div>
           </div>
 
           <AnimatePresence>
@@ -556,12 +664,128 @@ export default function GymSaaSManager({
       {/* SUB-TAB: PLANS */}
       {subTab === 'plans' && (
         <div className="space-y-6" id="saas_plans_module">
+          <div className="flex justify-between items-center bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <div>
+              <h3 className="text-sm font-bold text-white">Membresías y Tarifas</h3>
+              <p className="text-[11px] text-slate-400">Administre los planes autorizados de esta sucursal.</p>
+            </div>
+            <button
+              onClick={() => setIsAddingPlan(!isAddingPlan)}
+              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+            >
+              <Plus size={14} />
+              <span>{isAddingPlan ? 'Cerrar' : 'Crear Plan'}</span>
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {isAddingPlan && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4"
+              >
+                <h4 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-widest">Crear Plan Multi-tenant</h4>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!planName) return;
+                    onAddPlan?.({
+                      name: planName,
+                      price: Number(planPrice),
+                      durationMonths: Number(planDuration),
+                      benefits: planBenefits.split(',').map(b => b.trim()).filter(Boolean),
+                      gymId: activeGymId,
+                    });
+                    setPlanName('');
+                    setPlanPrice(30.0);
+                    setPlanDuration(1);
+                    setPlanBenefits('');
+                    setIsAddingPlan(false);
+                  }}
+                  className="grid grid-cols-1 md:grid-cols-4 gap-4"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Nombre del Plan</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Plan Anual Elite"
+                      value={planName}
+                      onChange={e => setPlanName(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Precio Mensual ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="29.99"
+                      value={planPrice}
+                      onChange={e => setPlanPrice(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Duración (Meses)</label>
+                    <select
+                      value={planDuration}
+                      onChange={e => setPlanDuration(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value={1}>1 Mes (Mensual)</option>
+                      <option value={3}>3 Meses (Trimestral)</option>
+                      <option value={6}>6 Meses (Semestral)</option>
+                      <option value={12}>12 Meses (Anual)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Beneficios (Separados por Coma)</label>
+                    <input
+                      type="text"
+                      placeholder="Acceso 24/7, Toalla libre, Nutricionista"
+                      value={planBenefits}
+                      onChange={e => setPlanBenefits(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="md:col-span-4 flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-lg transition"
+                    >
+                      Guardar en base de datos
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {planes.map((plan) => (
+            {gymPlanes.map((plan) => (
               <div key={plan.id} className="p-5 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col justify-between">
                 <div>
-                  <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider font-mono">Plan Catálogo</div>
-                  <h4 className="text-sm font-bold text-white mt-2">{plan.name}</h4>
+                  <div className="flex justify-between items-center">
+                    <span className={`text-[9px] uppercase font-bold tracking-wider font-mono p-1 rounded ${
+                      plan.gymId ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/15'
+                    }`}>
+                      {plan.gymId ? 'Sede Personal' : 'SaaS Global'}
+                    </span>
+                    {plan.gymId && onDeletePlan && (
+                      <button
+                        onClick={() => onDeletePlan(plan.id)}
+                        className="text-slate-500 hover:text-rose-400 transition"
+                        title="Eliminar Membresía"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-3">{plan.name}</h4>
                   <div className="text-2xl font-extrabold text-emerald-400 mt-2">
                     ${plan.price.toFixed(2)}
                     {plan.durationMonths > 0 && (
@@ -580,8 +804,8 @@ export default function GymSaaSManager({
                   </ul>
                 </div>
                 <div className="mt-6 pt-3 border-t border-slate-850 flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>Acciones de plan</span>
-                  <span className="text-emerald-400">PDO-ReadOnly</span>
+                  <span>ID Registro SQL</span>
+                  <span className="text-slate-400 font-mono">#{plan.id}</span>
                 </div>
               </div>
             ))}
@@ -592,22 +816,133 @@ export default function GymSaaSManager({
       {/* SUB-TAB: CLASSES */}
       {subTab === 'classes' && (
         <div className="space-y-6" id="saas_classes_module">
+          <div className="flex justify-between items-center bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <div>
+              <h3 className="text-sm font-bold text-white">Clases de Fitness y Asistencia</h3>
+              <p className="text-[11px] text-slate-400">Planifique las clases programadas para esta sucursal.</p>
+            </div>
+            <button
+              onClick={() => setIsAddingClass(!isAddingClass)}
+              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+            >
+              <Plus size={14} />
+              <span>{isAddingClass ? 'Cerrar' : 'Crear Clase Colectiva'}</span>
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {isAddingClass && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4"
+              >
+                <h4 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-widest">Crear Nueva Clase de Fitness</h4>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!clsClassName) return;
+                    onAddClass?.({
+                      gymId: activeGymId,
+                      className: clsClassName,
+                      trainerName: clsTrainer || 'Staff General',
+                      scheduleTime: clsSchedule || 'Horario Flexible',
+                      roomName: clsRoom || 'Sala Activa',
+                      maxCapacity: Number(clsCapacity),
+                      currentReservations: 0
+                    });
+                    setClsClassName('');
+                    setClsTrainer('');
+                    setClsSchedule('');
+                    setClsRoom('');
+                    setClsCapacity(20);
+                    setIsAddingClass(false);
+                  }}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Actividad / Nombre Clase</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. BodyPump, Spinning, Yoga"
+                      value={clsClassName}
+                      onChange={e => setClsClassName(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Instructor Asignado</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. María Gómez"
+                      value={clsTrainer}
+                      onChange={e => setClsTrainer(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Horario Semanal</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Lunes y Miércoles 19:30"
+                      value={clsSchedule}
+                      onChange={e => setClsSchedule(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Salón de Entrenamiento</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Salón Ciclo 3, Box Crossfit"
+                      value={clsRoom}
+                      onChange={e => setClsRoom(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Capacidad Máxima de Cupos</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={clsCapacity}
+                      onChange={e => setClsCapacity(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="md:col-span-3 flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-lg transition hover:bg-emerald-550 cursor-pointer"
+                    >
+                      Programar Nueva Clase
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider font-mono bg-slate-950/20">
+                  <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider font-mono bg-slate-955/20">
                     <th className="py-3 px-4">Clase / Actividad</th>
                     <th className="py-3 px-4">Instructor Asignado</th>
                     <th className="py-3 px-4">Horarios Programados</th>
                     <th className="py-3 px-4">Ubicación / Salón</th>
                     <th className="py-3 px-4">Capacidad de Cupos</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
                   {gymClasses.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-slate-500">
+                      <td colSpan={6} className="py-8 text-center text-slate-500">
                         No hay clases de fitness programadas para {activeGym.name}.
                       </td>
                     </tr>
@@ -633,6 +968,17 @@ export default function GymSaaSManager({
                               </div>
                             </div>
                           </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {onDeleteClass && (
+                              <button
+                                onClick={() => onDeleteClass(cl.id)}
+                                className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-950/20 transition cursor-pointer"
+                                title="Cancelar Clase"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
@@ -647,23 +993,150 @@ export default function GymSaaSManager({
       {/* SUB-TAB: INVENTORY */}
       {subTab === 'inventory' && (
         <div className="space-y-6" id="saas_inventory_module">
+          <div className="flex justify-between items-center bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <div>
+              <h3 className="text-sm font-bold text-white">Inventario y Catálogo de Tienda</h3>
+              <p className="text-[11px] text-slate-400">Controle el stock de suplementos y accesorios deportivos.</p>
+            </div>
+            <button
+              onClick={() => setIsAddingProduct(!isAddingProduct)}
+              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+            >
+              <Plus size={14} />
+              <span>{isAddingProduct ? 'Cerrar' : 'Agregar Producto'}</span>
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {isAddingProduct && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-4"
+              >
+                <h4 className="text-xs font-bold font-mono text-emerald-400 uppercase tracking-widest">Registrar Producto de Sede</h4>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!prodName) return;
+                    onAddProduct?.({
+                      gymId: activeGymId,
+                      name: prodName,
+                      category: prodCategory,
+                      price: Number(prodPrice),
+                      stock: Number(prodStock),
+                      minStock: Number(prodMinStock),
+                      supplier: prodSupplier || 'Proveedor Sede General'
+                    });
+                    setProdName('');
+                    setProdCategory('Suplementos');
+                    setProdPrice(15.0);
+                    setProdStock(10);
+                    setProdMinStock(3);
+                    setProdSupplier('');
+                    setIsAddingProduct(false);
+                  }}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Nombre del Producto</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Proteína Whey 1kg, Shaker Gold"
+                      value={prodName}
+                      onChange={e => setProdName(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Categoría</label>
+                    <select
+                      value={prodCategory}
+                      onChange={e => setProdCategory(e.target.value as any)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="Suplementos">Suplementos</option>
+                      <option value="Ropa Deportiva">Ropa Deportiva</option>
+                      <option value="Accesorios">Accesorios</option>
+                      <option value="Equipos">Equipos</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Precio de Venta ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={prodPrice}
+                      onChange={e => setProdPrice(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Stock Inicial (pz)</label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={prodStock}
+                      onChange={e => setProdStock(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Stock de Alerta Mínima</label>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      value={prodMinStock}
+                      onChange={e => setProdMinStock(Number(e.target.value))}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-mono tracking-wider font-bold">Proveedor Oficial</label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Distribuidor Oficial Fitness España"
+                      value={prodSupplier}
+                      onChange={e => setProdSupplier(e.target.value)}
+                      className="bg-slate-955 border border-slate-800 rounded-lg text-xs p-2 text-white w-full focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="md:col-span-3 flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-bold rounded-lg transition hover:bg-emerald-550 cursor-pointer"
+                    >
+                      Guardar en Inventario
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider font-mono bg-slate-950/20">
+                  <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider font-mono bg-slate-955/20">
                     <th className="py-3 px-4">Producto</th>
                     <th className="py-3 px-4">Categoría</th>
                     <th className="py-3 px-4">Proveedor Oficial</th>
                     <th className="py-3 px-4">Precio Venta</th>
                     <th className="py-3 px-4">Stock de Caja</th>
-                    <th className="py-3 px-4 text-right">Estatus Almacén</th>
+                    <th className="py-3 px-4">Estatus Almacén</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
                   {gymProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-500">
+                      <td colSpan={7} className="py-8 text-center text-slate-500">
                         No hay catálogo de inventario registrado para {activeGym.name}.
                       </td>
                     </tr>
@@ -681,7 +1154,7 @@ export default function GymSaaSManager({
                               {p.stock} pz <span className="text-[10px] text-slate-500"> (Min {p.minStock})</span>
                             </span>
                           </td>
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-3.5 px-4">
                             <span
                               className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded-full ${
                                 isLow ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'
@@ -689,6 +1162,17 @@ export default function GymSaaSManager({
                             >
                               {isLow ? 'Abastecer' : 'Disponible'}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            {onDeleteProduct && (
+                              <button
+                                onClick={() => onDeleteProduct(p.id)}
+                                className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-rose-950/20 transition cursor-pointer"
+                                title="Eliminar Producto"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );

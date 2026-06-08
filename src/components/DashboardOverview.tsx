@@ -4,18 +4,30 @@
  */
 
 import React from 'react';
-import { Gym, Client, ProductInventory, Plan } from '../types';
-import { Users, Building2, TrendingUp, AlertTriangle, Activity, CreditCard, Sparkles } from 'lucide-react';
+import { Gym, Client, ProductInventory, Plan, ClassSession } from '../types';
+import { Users, Building2, TrendingUp, AlertTriangle, Activity, CreditCard, Sparkles, BarChart2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 
 interface DashboardOverviewProps {
   gyms: Gym[];
   clients: Client[];
   products: ProductInventory[];
   planes: Plan[];
+  classes: ClassSession[];
   activeGymId: number;
   setActiveGymId: (id: number) => void;
   onNavigate: (tab: string) => void;
+  currentRole?: 'super_admin' | 'gym_admin' | 'client';
 }
 
 export default function DashboardOverview({
@@ -23,9 +35,11 @@ export default function DashboardOverview({
   clients,
   products,
   planes,
+  classes,
   activeGymId,
   setActiveGymId,
   onNavigate,
+  currentRole,
 }: DashboardOverviewProps) {
   
   // Computations
@@ -40,6 +54,7 @@ export default function DashboardOverview({
     status: 'Activo',
     createdAt: ''
   };
+  const gymClasses = classes ? classes.filter(cls => cls.gymId === activeGymId) : [];
   const gymClients = clients.filter(c => c.gymId === activeGymId);
   const activeClients = gymClients.filter(c => c.status === 'Activo');
   const criticalProducts = products.filter(p => p.gymId === activeGymId && p.stock <= p.minStock);
@@ -91,21 +106,27 @@ export default function DashboardOverview({
         </div>
 
         {/* Tenant Selector Switcher */}
-        <div className="flex items-center space-x-3 bg-slate-950 p-2 rounded-xl border border-slate-800 self-start md:self-auto">
-          <label className="text-xs font-medium text-slate-400 pl-2">Gimnasio Activo:</label>
-          <select
-            id="gym_tenant_selector"
-            className="bg-slate-900 text-white text-xs border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500 transition font-medium"
-            value={activeGymId}
-            onChange={(e) => setActiveGymId(Number(e.target.value))}
-          >
-            {gyms.map((g) => (
-              <option key={g.id} value={g.id}>
-                🏢 {g.name} ({g.planType})
-              </option>
-            ))}
-          </select>
-        </div>
+        {currentRole === 'gym_admin' ? (
+          <div className="flex items-center space-x-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-4 py-2 rounded-xl text-xs font-semibold">
+            <span>🏢 Sede Conectada: <strong className="text-white">{activeGym.name}</strong></span>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-3 bg-slate-950 p-2 rounded-xl border border-slate-800 self-start md:self-auto">
+            <label className="text-xs font-medium text-slate-400 pl-2">Gimnasio Activo:</label>
+            <select
+              id="gym_tenant_selector"
+              className="bg-slate-900 text-white text-xs border border-slate-800 rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500 transition font-medium"
+              value={activeGymId}
+              onChange={(e) => setActiveGymId(Number(e.target.value))}
+            >
+              {gyms.map((g) => (
+                <option key={g.id} value={g.id}>
+                  🏢 {g.name} ({g.planType})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Grid Counters */}
@@ -227,6 +248,110 @@ export default function DashboardOverview({
                 <p className="text-white mt-1 text-xs">{activeGym.phone} • {activeGym.email}</p>
               </div>
             </div>
+          </div>
+
+          {/* Recharts Active Class Occupancy Comparison Card */}
+          <div className="p-6 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-4" id="classes-occupancy-card">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-md font-semibold text-white flex items-center space-x-2" id="classes_utilization_title">
+                  <span className="text-emerald-400"><BarChart2 size={18} /></span>
+                  <span>Ocupación de Clases Colectivas</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Comparativa de reservas vs. capacidad máxima para las sesiones de fitness activas en esta sede.
+                </p>
+              </div>
+              <div className="flex items-center space-x-3 text-[10px] font-mono" id="classes_chart_legend">
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                  <span className="text-slate-400">Reservadas</span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-slate-600 inline-block"></span>
+                  <span className="text-slate-400">Capacidad Máx</span>
+                </div>
+              </div>
+            </div>
+
+            {gymClasses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 bg-slate-950/40 rounded-xl border border-dashed border-slate-800 text-center min-h-[220px]" id="empty_classes_fallback">
+                <span className="text-2xl mb-2">🏋️‍♂️</span>
+                <p className="text-xs font-semibold text-white">Sin clases programadas en esta sede</p>
+                <p className="text-[10px] text-slate-500 max-w-xs mt-1">No se encontraron clases colectivas para esta sucursal en el panel del tenant.</p>
+              </div>
+            ) : (
+              <div className="h-[280px] w-full pt-1" id="classes_chart_container">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={gymClasses.map(cls => ({
+                      name: cls.className,
+                      "Reservas": cls.currentReservations,
+                      "Capacidad": cls.maxCapacity,
+                      ocupacionPorcentaje: Math.round((cls.currentReservations / cls.maxCapacity) * 100),
+                      trainer: cls.trainerName,
+                      schedule: cls.scheduleTime,
+                    }))}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 5 }}
+                    barGap={4}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fill: '#94a3b8', fontSize: 10 }} 
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={{ stroke: '#334155' }}
+                    />
+                    <YAxis 
+                      tick={{ fill: '#94a3b8', fontSize: 10 }}
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={{ stroke: '#334155' }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }} 
+                      content={({ active, payload, label }: any) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl shadow-2xl text-left space-y-1" id={`tooltip-${data.name}`}>
+                              <p className="font-bold text-slate-200 text-xs font-sans">{label}</p>
+                              <p className="text-slate-500 font-sans text-[10px] mb-1">
+                                Trainer: {data.trainer} • {data.schedule}
+                              </p>
+                              <div className="flex items-center space-x-2 text-xs font-mono">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                                <span className="text-slate-400">Reservadas: <strong className="text-emerald-400">{data["Reservas"]}</strong></span>
+                              </div>
+                              <div className="flex items-center space-x-2 text-xs font-mono">
+                                <span className="w-2 h-2 rounded-full bg-slate-600 inline-block"></span>
+                                <span className="text-slate-400">Capacidad: <strong className="text-slate-300">{data["Capacidad"]}</strong></span>
+                              </div>
+                              <div className="mt-1.5 pt-1.5 border-t border-slate-800/80 text-[10px] font-mono font-semibold text-emerald-400">
+                                Ocupación: {data.ocupacionPorcentaje}%
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar 
+                      dataKey="Reservas" 
+                      fill="#10b981" 
+                      radius={[4, 4, 0, 0]} 
+                      maxBarSize={32}
+                    />
+                    <Bar 
+                      dataKey="Capacidad" 
+                      fill="#475569" 
+                      radius={[4, 4, 0, 0]} 
+                      maxBarSize={32}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
 
           {/* Quick Shortcuts */}
